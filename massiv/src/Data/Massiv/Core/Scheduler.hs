@@ -19,16 +19,19 @@ module Data.Massiv.Core.Scheduler
   , withScheduler_
   , divideWork
   , divideWork_
+  , retryCount
+  , globalWorkersMVar
   ) where
-
-import           Control.Concurrent           (ThreadId, forkOnWithUnmask,
+import           Control.Concurrent           (ThreadId, forkOn,
+                                               forkOnWithUnmask, myThreadId,
                                                getNumCapabilities, killThread)
 import           Control.Concurrent.MVar
 import           Control.DeepSeq
-import           Control.Exception            (SomeException, catch, mask,
+import           Control.Exception            (BlockedIndefinitelyOnMVar (..),
+                                               SomeException, catch, mask,
                                                mask_, throwIO, try,
                                                uninterruptibleMask_)
-import           Control.Monad                (forM)
+import           Control.Monad                (forM, unless, void, when)
 import           Control.Monad.Primitive      (RealWorld)
 import           Data.IORef                   (IORef, atomicModifyIORef',
                                                newIORef, readIORef)
@@ -39,6 +42,7 @@ import           Data.Primitive.Array         (Array, MutableArray, indexArray,
                                                writeArray)
 import           System.IO.Unsafe             (unsafePerformIO)
 import           System.Mem.Weak
+import Say
 
 data Job = Job (IO ())
          | Retire
@@ -64,14 +68,14 @@ scheduleWork :: Scheduler a -- ^ Scheduler to use
              -> IO a -- ^ Action to hand of to a worker
              -> IO ()
 scheduleWork Scheduler {..} jobAction = do
-  modifyMVar_ jobQueueMVar $ \jobs -> do
+  retryCount "scheduleWork.modifyMVar" $ modifyMVar_ jobQueueMVar $ \jobs -> do
     jix <- atomicModifyIORef' jobsCountIORef $ \jc -> (jc + 1, jc)
     let job =
           Job $ do
             jobResult <- jobAction
-            withMVar resultsMVar $ \resArray -> do
+            retryCount "scheduleWork.withMVar" $ withMVar resultsMVar $ \resArray -> do
               writeArray resArray jix jobResult
-              putMVar (workerJobDone workers) Nothing
+              retryCount "scheduleWork" $ putMVar (workerJobDone workers) Nothing
     return (job : jobs)
 
 
@@ -118,6 +122,7 @@ withScheduler :: [Int] -- ^ Worker Stations, i.e. capabilities. Empty list will
                                        -- the work.
               -> IO (Int, Array a)
 withScheduler wss submitJobs = do
+  d "Start withSceduler"
   jobsCountIORef <- newIORef 0
   jobQueueMVar <- newMVar []
   resultsMVar <- newEmptyMVar
@@ -132,26 +137,29 @@ withScheduler wss submitJobs = do
     (\(mWeakWorkers, workers) -> do
        case mWeakWorkers of
          Nothing ->
-           putMVar (workerJobQueue workers) $
+           retryCount "withScheduler" $ putMVar (workerJobQueue workers) $
            replicate (length (workerThreadIds workers)) Retire
-         Just weak -> putMVar globalWorkersMVar weak)
+         Just weak -> retryCount "withScheduler" $ putMVar globalWorkersMVar weak)
     (\_ (mWeakWorkers, workers) -> do
        case mWeakWorkers of
          Nothing -> mapM_ killThread (workerThreadIds workers)
          Just weakWorkers -> do
            finalize weakWorkers
            newWeakWorkers <- hireWeakWorkers globalWorkersMVar
-           putMVar globalWorkersMVar newWeakWorkers)
+           retryCount "withScheduler" $ putMVar globalWorkersMVar newWeakWorkers)
     (\(_, workers) -> do
        let scheduler =
              Scheduler {numWorkers = length $ workerThreadIds workers, ..}
+       d "Submit jobs"
        _ <- submitJobs scheduler
        jobCount <- readIORef jobsCountIORef
        marr <- newArray jobCount uninitialized
-       putMVar resultsMVar marr
-       jobQueue <- takeMVar jobQueueMVar
-       putMVar (workerJobQueue workers) $ reverse jobQueue
+       retryCount "withScheduler" $ putMVar resultsMVar marr
+       jobQueue <- retryCount "withScheduler.takeMVar" $ takeMVar jobQueueMVar
+       retryCount "withScheduler" $ putMVar (workerJobQueue workers) $ reverse jobQueue
+       d "Wait for work"
        waitTillDone scheduler
+       d "Done with work"
        arr <- unsafeFreezeArray marr
        return (jobCount, arr))
 
@@ -204,7 +212,7 @@ waitTillDone (Scheduler {..}) = readIORef jobsCountIORef >>= waitTill 0
     waitTill jobsDone jobsCount
       | jobsDone == jobsCount = return ()
       | otherwise = do
-          mExc <- takeMVar (workerJobDone workers)
+          mExc <- retryCount "waitTillDone.takeMVar" $ takeMVar (workerJobDone workers)
           case mExc of
             Just exc -> throwIO exc
             Nothing  -> waitTill (jobsDone + 1) jobsCount
@@ -217,10 +225,10 @@ waitTillDone (Scheduler {..}) = readIORef jobsCountIORef >>= waitTill 0
 -- retired, but ruthlessly killed.
 runWorker :: MVar [Job] -> IO ()
 runWorker jobsMVar = do
-  jobs <- takeMVar jobsMVar
+  jobs <- retryCount "runWorker.takeMVar" $ takeMVar jobsMVar
   case jobs of
-    (Job job:rest) -> putMVar jobsMVar rest >> job >> runWorker jobsMVar
-    (Retire:rest)  -> putMVar jobsMVar rest
+    (Job job:rest) -> retryCount "runWorker" (putMVar jobsMVar rest) >> job >> runWorker jobsMVar
+    (Retire:rest)  -> retryCount "runWorker" $ putMVar jobsMVar rest
     []             -> runWorker jobsMVar
 
 
@@ -243,7 +251,7 @@ hireWorkers wss = do
       forkOnWithUnmask ws $ \unmask -> do
         catch
           (unmask $ runWorker workerJobQueue)
-          (unmask . putMVar workerJobDone . Just)
+          (unmask . retryCount "hireWorkers" . putMVar workerJobDone . Just)
   workerThreadIds `deepseq` return Workers {..}
 
 -- | Global workers are the most utilized ones, therefore they are rarily
@@ -255,14 +263,38 @@ globalWorkersMVar :: MVar (Weak Workers)
 globalWorkersMVar = unsafePerformIO $ do
   workersMVar <- newEmptyMVar
   weakWorkers <- hireWeakWorkers workersMVar
-  putMVar workersMVar weakWorkers
+  retryCount "globalWorkersMVar" $ putMVar workersMVar weakWorkers
   return workersMVar
 {-# NOINLINE globalWorkersMVar #-}
 
 
--- | Hire workers under weak pointers. Finilizer will kill all the
+-- | Hire workers under weak pointers. Finalizer will kill all the
 -- workers. These will be used as global workers
 hireWeakWorkers :: key -> IO (Weak Workers)
 hireWeakWorkers k = do
   workers <- hireWorkers []
-  mkWeak k workers (Just (mapM_ killThread (workerThreadIds workers)))
+  mkWeak k workers (Just (mapM_ (\t -> d ("killing <" ++ show t ++ ">") >> killThread t) (workerThreadIds workers)))
+
+
+--- Helper dubug functions
+
+debug :: Bool
+debug = True
+
+d :: [Char] -> IO ()
+d str = when debug $ do
+  tid <- myThreadId
+  sayString $ "ThreadId: " ++ show tid ++ " is doing " ++ str
+
+
+retryCount :: [Char] -> IO a -> IO a
+retryCount loc action =
+  if debug
+    then loop' (10 :: Int)
+    else action
+  where
+    loop' 0 = action
+    loop' cnt =
+      action `catch` \BlockedIndefinitelyOnMVar -> do
+        d $ "retryCount." ++ loc
+        loop' (cnt - 1)

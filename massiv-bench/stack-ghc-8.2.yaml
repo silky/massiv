@@ -5,4 +5,5 @@ packages:
 extra-deps:
 - repa-3.4.1.2
 - repa-algorithms-3.4.1.1
+- accelerate-llvm-native-1.1.0.1
 allow-newer: true

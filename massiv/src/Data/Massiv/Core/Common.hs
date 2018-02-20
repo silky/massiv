@@ -131,6 +131,7 @@ class OuterSlice r ix e where
   outerLength :: Array r ix e -> Int
   default outerLength :: Size r ix e => Array r ix e -> Int
   outerLength = headDim . size
+  {-# INLINE outerLength #-}
 
 class Size r ix e => InnerSlice r ix e where
   unsafeInnerSlice :: Array r ix e -> (Lower ix, Int) -> Int -> Elt r ix e
@@ -199,8 +200,6 @@ class Construct r ix e => Ragged r ix e where
   unsafeGenerateM :: Monad m => Comp -> ix -> (ix -> m e) -> m (Array r ix e)
 
   edgeSize :: Array r ix e -> ix
-
-  --outerLength :: Array r ix e -> Int
 
   flatten :: Array r ix e -> Array r Ix1 e
 
