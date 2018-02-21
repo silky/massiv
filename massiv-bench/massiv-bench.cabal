@@ -143,7 +143,9 @@ benchmark accelerate
   ghc-options:         -threaded -O2 -with-rtsopts=-N7
   build-depends:       base
                      , accelerate
+                     , accelerate-llvm
                      , accelerate-llvm-native
+                     , deadlock-debug
                      , repa
                      , deepseq
                      , criterion

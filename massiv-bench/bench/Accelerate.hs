@@ -16,7 +16,7 @@ lightFuncExp i j =
   A.sin (A.fromIntegral (i A.^ (2 :: Exp Int) + j A.^ (2 :: Exp Int)) :: Exp Double)
 
 sumAccArr :: (A.Elt e, A.Shape t, P.Num (Exp e)) => A.Array t e -> e
-sumAccArr = (`indexArray` A.Z) . run . A.sum . A.flatten . use
+sumAccArr = (`indexArray` A.Z) . runN . A.sum . A.flatten . use
 
 lightFunc :: Int -> Int -> Double
 lightFunc i j = sin (P.fromIntegral (i P.^ (2 :: Int) + j P.^ (2 :: Int)) :: Double)
