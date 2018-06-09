@@ -217,6 +217,14 @@ class Manifest r ix e => Mutable r ix e where
       (# s'#, _ #) -> pure (State s'#)
   {-# INLINE unsafeLinearWriteA #-}
 
+  unsafeLinearCopyA :: Applicative m =>
+                       MArray RealWorld r ix e -- ^ Source array
+                    -> Int -- ^ Offset linear index (in number of elements) into source array
+                    -> MArray RealWorld r ix e -- ^ Destination array
+                    -> Int -- ^ Offset linear index (in number of elements) into destination array
+                    -> Int -- ^ Number of elements to copy
+                    -> WorldState
+                    -> m WorldState
 
 
 class Nested r ix e where

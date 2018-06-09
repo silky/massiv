@@ -196,9 +196,13 @@ unsafeLinearFillM ma f (State s_#) = go 0# s_#
 -- @since 0.1.1
 generateLinearM :: (Monad m, Mutable r ix e) => Comp -> ix -> (Int -> m e) -> m (Array r ix e)
 generateLinearM comp sz f = do
-  (s, mba) <- unsafeNewA (liftIndex (max 0) sz) (State (noDuplicate# realWorld#))
+  let sz' = liftIndex (max 0) sz
+      k = totalElem sz'
+  (s, mba) <- unsafeNewA sz' (State (noDuplicate# realWorld#))
   s' <- unsafeLinearFillM mba f s
-  (_, ba) <- unsafeFreezeA comp mba s'
+  (s'', mba') <- unsafeNewA sz' s'
+  s''' <- unsafeLinearCopyA mba 0 mba' 0 k s''
+  (_, ba) <- unsafeFreezeA comp mba' s'''
   return ba
 {-# INLINE generateLinearM #-}
 

@@ -187,6 +187,14 @@ instance (Index ix, Prim e) => Mutable P ix e where
     pure (State (writeByteArray# mba# i# val s#))
   {-# INLINE unsafeLinearWriteA #-}
 
+  unsafeLinearCopyA mbaS (I# ixS#) mbaD (I# ixD#) (I# k#) (State s#) =
+    pure (State (copyMutableByteArray# mbaS# ixS# mbaD# ixD# bytes#  s#))
+    where
+      !(MPArray _ (MutableByteArray mbaD#)) = mbaD
+      !(MPArray _ (MutableByteArray mbaS#)) = mbaS
+      bytes# = k# *# sizeOf# (undefined :: e)
+  {-# INLINE unsafeLinearCopyA #-}
+
 
 
 totalSize# :: (Index ix, Prim e) => ix -> e -> Int#
