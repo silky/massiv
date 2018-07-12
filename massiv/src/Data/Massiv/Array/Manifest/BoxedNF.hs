@@ -1,5 +1,5 @@
-{-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE CPP                   #-}
+{-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -27,9 +27,8 @@ module Data.Massiv.Array.Manifest.BoxedNF
 import           Control.DeepSeq                     (NFData (..), deepseq)
 import           Control.Monad.ST                    (runST)
 import           Data.Massiv.Array.Delayed.Internal  (eq, ord)
-import           Data.Massiv.Array.Manifest.Internal (M, toManifest)
-import           Data.Massiv.Array.Manifest.List     as A
-import           Data.Massiv.Array.Mutable
+import           Data.Massiv.Array.Manifest.Internal
+import           Data.Massiv.Array.Manifest.List     as L
 import           Data.Massiv.Array.Unsafe            (unsafeGenerateArray,
                                                       unsafeGenerateArrayP)
 import           Data.Massiv.Core.Common
@@ -85,7 +84,7 @@ instance (Index ix, NFData e) => Construct N ix e where
 
 instance (Index ix, NFData e) => Source N ix e where
   unsafeLinearIndex (NArray _ _ a) =
-    INDEX_CHECK("(Source N ix e).unsafeLinearIndex", A.sizeofArray, A.indexArray) a
+    INDEX_CHECK("(Source N ix e).unsafeLinearIndex", sizeofArray, A.indexArray) a
   {-# INLINE unsafeLinearIndex #-}
 
 
@@ -124,7 +123,7 @@ instance ( NFData e
 instance (Index ix, NFData e) => Manifest N ix e where
 
   unsafeLinearIndexM (NArray _ _ a) =
-    INDEX_CHECK("(Manifest N ix e).unsafeLinearIndexM", A.sizeofArray, A.indexArray) a
+    INDEX_CHECK("(Manifest N ix e).unsafeLinearIndexM", sizeofArray, A.indexArray) a
   {-# INLINE unsafeLinearIndexM #-}
 
 
@@ -151,11 +150,11 @@ instance (Index ix, NFData e) => Mutable N ix e where
   {-# INLINE unsafeNewZero #-}
 
   unsafeLinearRead (MNArray _ ma) =
-    INDEX_CHECK("(Mutable N ix e).unsafeLinearRead", A.sizeofMutableArray, A.readArray) ma
+    INDEX_CHECK("(Mutable N ix e).unsafeLinearRead", sizeofMutableArray, A.readArray) ma
   {-# INLINE unsafeLinearRead #-}
 
   unsafeLinearWrite (MNArray _ ma) i e = e `deepseq`
-    INDEX_CHECK("(Mutable N ix e).unsafeLinearWrite", A.sizeofMutableArray, A.writeArray) ma i e
+    INDEX_CHECK("(Mutable N ix e).unsafeLinearWrite", sizeofMutableArray, A.writeArray) ma i e
   {-# INLINE unsafeLinearWrite #-}
 
 
@@ -219,7 +218,7 @@ instance ( NFData e
          ) =>
          IsList (Array N ix e) where
   type Item (Array N ix e) = Item (Array L ix e)
-  fromList = A.fromLists' Seq
+  fromList = L.fromLists' Seq
   {-# INLINE fromList #-}
   toList = GHC.toList . toListArray
   {-# INLINE toList #-}

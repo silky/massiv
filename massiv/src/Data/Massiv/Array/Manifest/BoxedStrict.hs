@@ -27,15 +27,14 @@ import           Data.Massiv.Array.Manifest.BoxedNF  (deepseqArray,
 import           Data.Massiv.Array.Unsafe            (unsafeGenerateArray,
                                                       unsafeGenerateArrayP)
 import           Data.Massiv.Array.Manifest.Internal
-import           Data.Massiv.Array.Manifest.List     as A
-import           Data.Massiv.Array.Mutable
+import           Data.Massiv.Array.Manifest.List     as L
 import           Data.Massiv.Array.Ops.Fold.Internal
 import           Data.Massiv.Core.Common
 import           Data.Massiv.Core.List
 import qualified Data.Primitive.Array                as A
 import           GHC.Base                            (build)
 import           GHC.Exts                            as GHC (IsList (..))
-import           Prelude                             hiding (mapM)
+import           Prelude                             as P hiding (mapM)
 
 #include "massiv.h"
 
@@ -78,7 +77,7 @@ instance Index ix => Construct B ix e where
 
 instance Index ix => Source B ix e where
   unsafeLinearIndex (BArray _ _ a) =
-    INDEX_CHECK("(Source B ix e).unsafeLinearIndex", A.sizeofArray, A.indexArray) a
+    INDEX_CHECK("(Source B ix e).unsafeLinearIndex", sizeofArray, A.indexArray) a
   {-# INLINE unsafeLinearIndex #-}
 
 
@@ -117,7 +116,7 @@ instance ( NFData e
 instance Index ix => Manifest B ix e where
 
   unsafeLinearIndexM (BArray _ _ a) =
-    INDEX_CHECK("(Manifest B ix e).unsafeLinearIndexM", A.sizeofArray, A.indexArray) a
+    INDEX_CHECK("(Manifest B ix e).unsafeLinearIndexM", sizeofArray, A.indexArray) a
   {-# INLINE unsafeLinearIndexM #-}
 
 
@@ -144,11 +143,11 @@ instance Index ix => Mutable B ix e where
   {-# INLINE unsafeNewZero #-}
 
   unsafeLinearRead (MBArray _ ma) =
-    INDEX_CHECK("(Mutable B ix e).unsafeLinearRead", A.sizeofMutableArray, A.readArray) ma
+    INDEX_CHECK("(Mutable B ix e).unsafeLinearRead", sizeofMutableArray, A.readArray) ma
   {-# INLINE unsafeLinearRead #-}
 
   unsafeLinearWrite (MBArray _ ma) i e = e `seq`
-    INDEX_CHECK("(Mutable B ix e).unsafeLinearWrite", A.sizeofMutableArray, A.writeArray) ma i e
+    INDEX_CHECK("(Mutable B ix e).unsafeLinearWrite", sizeofMutableArray, A.writeArray) ma i e
   {-# INLINE unsafeLinearWrite #-}
 
 
@@ -181,7 +180,7 @@ instance ( IsList (Array L ix e)
          ) =>
          IsList (Array B ix e) where
   type Item (Array B ix e) = Item (Array L ix e)
-  fromList = A.fromLists' Seq
+  fromList = L.fromLists' Seq
   {-# INLINE fromList #-}
   toList = GHC.toList . toListArray
   {-# INLINE toList #-}
